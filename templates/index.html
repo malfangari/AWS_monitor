@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SMA-AWS Monitor</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eef2f3; padding: 20px; }
+    
+        /* 1. Main Dashboard Grid (The "Command Center" look) */
+        .dashboard-container { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+            gap: 15px; 
+            padding: 10px;
+            justify-content: start;
+        }
+    
+        /* 2. Station Cards (Now just small triggers for the modal) */
+        .card { 
+            background: white; 
+            border-radius: 8px; 
+            padding: 12px; 
+            width: auto; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+            border-top: 5px solid #3498db; 
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            cursor: pointer;
+            position: relative;
+            height: fit-content;
+        }
+        .card .card-actions {
+    margin-top: auto;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+}
+        .card h1, .card small {
+           word-break: break-word;
+            overflow-wrap: break-word;
+            }
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        .offline { border-top: 5px solid #e74c3c; background: #fdf2f2; }
+    
+        /* 3. Typography for Cards */
+        h1 { font-size: 1.1em; margin: 0; color: #2c3e50; }
+        small { font-size: 0.75em; color: #7f8c8d; }
+        .status-badge { font-size: 0.75em; padding: 2px 6px; border-radius: 4px; float: right; font-weight: bold; }
+        .bg-online { background: #15e06a; color: white; }
+        .bg-offline { background: #ee0b0b; color: white; }
+    
+        /* 4. Modal Overlay (Darkens the screen) */
+        .modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0; top: 0;
+    width: 100%; height: 100%;
+    background-color: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+}
+.modal-content {
+    background: white;
+    margin: 10% auto;
+    padding: 0;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+}
+.modal-header {
+    padding: 20px 25px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.modal-body {
+    padding: 20px 25px;
+}
+.modal-footer {
+    padding: 15px 25px;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+.form-group {
+    margin-bottom: 15px;
+}
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+.form-group input, .form-group select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+.close-btn {
+    font-size: 28px;
+    cursor: pointer;
+}
+.error-banner {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #f8d7da;
+    color: #721c24;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border-left: 5px solid #e74c3c;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 2000;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    max-width: 80%;
+    min-width: 300px;
+}
+.error-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    color: #721c24;
+    margin-left: auto;
+}
+.error-close:hover {
+    opacity: 0.7;
+}
+.btn-primary {
+    background: #3498db;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.btn-secondary {
+    background: #95a5a6;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+/* 3. Padding for the grid so it doesn't touch the edges */
+.modal-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    padding: 20px 25px; /* Added padding here since we removed it from modal-content */
+}
+
+/* 4. Adjust close button for the header flexbox */
+.close-btn {
+    color: #aaa;
+    font-size: 30px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1; /* Better alignment */
+}
+        /* 7. Modal Data Items */
+        .item { font-size: 0.95em; padding: 8px; border-bottom: 1px solid #f5f5f5; display: flex; justify-content: space-between; }
+        .label { font-weight: bold; color: #7f8c8d; }
+        .value { color: #2980b9; font-weight: bold; }
+    
+        .close-btn:hover { color: #e74c3c; }
+        .view-btn, .delete-btn {
+    font-size: 0.7em;
+    padding: 4px 8px;
+    margin-right: 5px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.view-btn { background: #55b3f1; color: white; }
+.delete-btn { background: #f85c4b; color: white; }
+.success-banner {
+    position: fixed;
+    top: 80px; /* below error banner if both appear */
+    left: 50%;
+    transform: translateX(-50%);
+    background: #d4edda;
+    color: #155724;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border-left: 5px solid #28a745;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 2000;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    max-width: 80%;
+    min-width: 300px;
+}
+.success-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    color: #155724;
+    margin-left: auto;
+}
+.success-close:hover {
+    opacity: 0.7;
+}
+    </style>
+    <script>
+    let globalData = {}; // Store latest data for modal access
+    async function deleteStation(stationId) {
+    if (!confirm(`Are you sure you want to delete station "${stationId}"? This will remove it from the monitor. Data logs will remain.`)) {
+        return;
+    }
+    try {
+        const response = await fetch(`/admin/delete/${stationId}`, {
+            method: 'DELETE'
+        });
+        if (response.ok) {
+            // Remove from local data and refresh dashboard
+            delete globalData[stationId];
+            updateData();
+        } else {
+            const error = await response.json();
+            alert(`Error: ${error.detail || 'Could not delete station'}`);
+        }
+    } catch (err) {
+        console.error('Delete failed', err);
+        alert('Delete failed');
+    }
+}
+let currentEditStationId = null;
+
+async function openEditModal(stationId) {
+    currentEditStationId = stationId;
+    const station = globalData[stationId];
+    
+    // Fill the modal form with current values
+    document.getElementById('modalTitle').innerText = 'Edit Station';
+    document.getElementById('stationId').value = stationId;
+    document.getElementById('stationId').readOnly = true;  // ID cannot be changed
+    document.getElementById('stationName').value = station.name;
+    document.getElementById('stationPort').value = station.port;   // You need to store port in globalData
+    document.getElementById('stationParser').value = station.parser_type; // Also store parser
+    
+    document.getElementById('addEditModal').style.display = 'block';
+    document.getElementById('saveBtn').onclick = saveEdit;
+}
+    
+    async function updateData() {
+        try {
+            const response = await fetch('/monitor');
+            globalData = await response.json();
+            const container = document.getElementById('dashboard');
+            
+            let finalHtml = ''; 
+
+            for (const id in globalData) {
+    const station = globalData[id];
+    let diffSeconds = null;
+if (station.last_received_iso) {
+    const lastSeen = new Date(station.last_received_iso);
+    diffSeconds = Math.floor((new Date() - lastSeen) / 1000);
+}
+
+let statusClass = '';
+let badgeText = 'ONLINE';
+let badgeClass = 'bg-online';
+let timeDisplay = (station.last_received === 'Never') ? 'Never' : station.last_received;
+
+// Only calculate time ago if we have a valid diffSeconds
+let timeAgo = 'Never';
+if (diffSeconds !== null) {
+    timeAgo = `${diffSeconds}s ago`;
+    // 1. Offline Check (No signal for >30 seconds for testing, change back to 300 later)
+    if (diffSeconds > 300) {
+        statusClass = 'offline';
+        badgeText = 'OFFLINE';
+        badgeClass = 'bg-offline';
+    } 
+    // 2. Warning Check (Time Drift reported by Backend)
+    else if (station.status === 'warning') {
+        statusClass = 'warning';
+        badgeText = 'TIME DRIFT';
+        badgeClass = 'bg-warning';
+    }
+} else {
+    // No data ever received → offline
+    statusClass = 'offline';
+    badgeText = 'OFFLINE';
+    badgeClass = 'bg-offline';
+    timeAgo = 'Never';
+}
+
+finalHtml += `
+    <div class="card ${statusClass}" onclick="openModal('${id}')">
+        <span class="status-badge ${badgeClass}">${badgeText}</span>
+        <h1>${station.name || id}</h1>
+        <small>${station.last_received} (${timeAgo})</small>
+        <div style="margin-top: 10px;">
+            <button class="edit-btn" onclick="event.stopPropagation(); openEditModal('${id}')">✏️ Edit</button>
+            <button class="delete-btn" onclick="event.stopPropagation(); deleteStation('${id}')">🗑️ Delete</button>
+        </div>
+    </div>`;
+}  
+        container.innerHTML = finalHtml;
+        } catch (error) {
+            console.error("Fetch failed", error);
+        } finally {
+            setTimeout(updateData, 5000);
+        }
+    }
+    function showSuccess(message) {
+    const banner = document.getElementById('successBanner');
+    const msgSpan = document.getElementById('successMessage');
+    msgSpan.innerText = message;
+    banner.style.display = 'flex';
+    // Auto-hide after 4 seconds
+    setTimeout(() => {
+        banner.style.display = 'none';
+    }, 4000);
+}
+
+    function hideSuccess() {
+    document.getElementById('successBanner').style.display = 'none';
+}
+    function showError(message) {
+    const banner = document.getElementById('errorBanner');
+    const msgSpan = document.getElementById('errorMessage');
+    msgSpan.innerText = message;
+    banner.style.display = 'flex';
+    // Auto-hide after 8 seconds
+    setTimeout(() => {
+        banner.style.display = 'none';
+    }, 8000);
+}
+
+    function hideError() {
+    document.getElementById('errorBanner').style.display = 'none';
+}
+
+// Show error if URL contains ?error= (for redirects)
+    function showErrorFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const error = urlParams.get('error');
+    if (error) {
+        showError(decodeURIComponent(error));
+        // Remove error from URL without reloading
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+}
+
+    function openModal(id) {
+    const station = globalData[id];
+    const modal = document.getElementById('stationModal');
+    const body = document.getElementById('modalBody');
+
+    // Structure with a separate Header and Grid
+    let html = `
+        <div class="modal-header">
+            <div>
+                <h2 style="margin:0; color:#2c3e50">Station: ${id}</h2>
+                <small style="color:#7f8c8d">Full Report - ${station.last_received}</small>
+            </div>
+                <span class="close-btn" onclick="closeViewModal()">&times;</span>   
+                  </div>
+        <div class="modal-grid">`;
+
+    for (const [tag, val] of Object.entries(station.data)) {
+        if (!['S', 'D', 'T'].includes(tag)) {
+            let displayName = (station.labels && station.labels[tag]) ? station.labels[tag] : tag;
+            html += `
+                <div class="item">
+                    <span class="label">${displayName}:</span> 
+                    <span class="value">${val !== null ? val : '---'}</span>
+                </div>`;
+        }
+    }
+    html += `</div>`;
+    
+    body.innerHTML = html;
+    modal.style.display = "block";
+}
+// Close the view modal (shows station data)
+function closeViewModal() {
+    document.getElementById('stationModal').style.display = 'none';
+}
+
+// Close the add/edit modal
+function closeAddEditModal() {
+    document.getElementById('addEditModal').style.display = 'none';
+}
+
+// Update saveEdit to close the correct modal
+async function saveEdit() {
+    const form = document.getElementById('stationForm');
+    const formData = new FormData(form);
+    try {
+        const response = await fetch(`/admin/edit/${currentEditStationId}`, {
+            method: 'PUT',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        if (response.ok) {
+            closeAddEditModal();
+            updateData();
+            if (response.ok) {
+             closeAddEditModal();
+             updateData();
+             showSuccess('Station added successfully');
+            }
+        } else {
+            const error = await response.json();
+            showError(error.error || 'Update failed');
+        }
+    } catch (err) {
+        showError('Network error - could not reach server');
+    }
+}
+
+// Close modal if user clicks outside of the white box
+window.onclick = function(event) {
+    let viewModal = document.getElementById('stationModal');
+    let editModal = document.getElementById('addEditModal');
+    if (event.target == viewModal) closeViewModal();
+    if (event.target == editModal) closeAddEditModal();
+}    
+    function openAddModal() {
+    // Reset form
+    document.getElementById('stationForm').reset();
+    document.getElementById('stationId').readOnly = false;
+    document.getElementById('modalTitle').innerText = 'Add New Station';
+    document.getElementById('saveBtn').onclick = addStation;
+    document.getElementById('addEditModal').style.display = 'block';
+}
+
+async function addStation() {
+    const form = document.getElementById('stationForm');
+    const formData = new FormData(form);
+    try {
+        const response = await fetch('/admin/register', {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        if (response.ok) {
+            closeAddEditModal();
+            updateData();   // refresh dashboard
+            if (response.ok) {
+               closeAddEditModal();
+               updateData();
+              showSuccess('Station added successfully');
+                }
+        } else {
+            const error = await response.json();
+            showError(error.error || 'Registration failed');
+        }
+    } catch (err) {
+        showError('Network error - could not reach server');
+    }
+}
+window.onload = function() {
+    showErrorFromUrl();
+    updateData();
+};
+
+</script>
+</head>
+<body>
+    <div id="errorBanner" class="error-banner" style="display: none;">
+        <span id="errorMessage"></span>
+        <button class="error-close" onclick="hideError()">×</button>
+    </div>
+    <div id="successBanner" class="success-banner" style="display: none;">
+        <span id="successMessage"></span>
+        <button class="success-close" onclick="hideSuccess()">×</button>
+    </div>
+    <h2 style="text-align:center; color:#2c3e50;">SMA-AWS Monitor System</h2>
+    
+    <div id="dashboard" class="dashboard-container"></div>
+    <div style="display: flex; gap: 10px;">
+        <a href="/admin" style="background: #3498db; color: white; text-decoration: none; padding: 10px 20px;
+         border-radius: 6px; font-weight: bold; display: inline-block;">⚙️ Stations Admin</a>
+    <div id="stationModal" class="modal">
+        <div class="modal-content">
+            <div id="modalBody">
+                </div>
+        </div>
+    </div>
+    <!-- Add/Edit Station Modal -->
+<div id="addEditModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">Add New Station</h2>
+            <span class="close-btn" onclick="closeAddEditModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="stationForm">
+                <div class="form-group">
+                    <label>Station ID:</label>
+                    <input type="text" id="stationId" name="station_id" required>
+                </div>
+                <div class="form-group">
+                    <label>Station Name:</label>
+                    <input type="text" id="stationName" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>Port Number:</label>
+                    <input type="number" id="stationPort" name="port" required>
+                </div>
+                <div class="form-group">
+                    <label>Parser Type:</label>
+                    <select id="stationParser" name="parser_type">
+                        <option value="Vaisala">Vaisala AWS330</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeAddEditModal()">Cancel</button>
+            <button class="btn-primary" id="saveBtn">Save Station</button>
+        </div>
+    </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+backend-songs-venv/
+env/
+.env
+*.egg-info/
+dist/
+build/
+
+# Database and logs
+weather.db
+stations.json
+data/
+data_issues/
+data_records/
+*.log
+drift_log.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

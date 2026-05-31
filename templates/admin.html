@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SMA Admin - Register Station</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #eef2f3; display: flex; justify-content: center; padding-top: 50px; }
+        .box { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 400px; }
+        input, select { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; background: #3498db; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #2980b9; }
+        .error { background: #f8d7da; color: #721c24; padding: 10px; border-radius: 5px; margin-bottom: 15px; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        {% if error %}
+        <div class="error">
+            {{ error }}
+        </div>
+        {% endif %}
+        <h2 style="margin-top:0; color:#2c3e50">Register Station</h2>
+        <form action="/admin/register" method="post">
+            <input type="text" name="station_id" placeholder="Station ID (e.g., AWS330)" required>
+            <input type="text" name="name" placeholder="Station Name (e.g., Khartoum North)" required>
+            <input type="number" name="port" placeholder="Port (e.g., 50002)" required>
+            
+            <label style="font-size: 12px; color: #7f8c8d;">Select Parser Type:</label>
+            <select name="parser_type">
+                <option value="Vaisala">Vaisala AWS330</option>
+            </select>
+            
+            <button type="submit">Add to System</button>
+            <a href="/" style="display:block; text-align:center; margin-top:15px; color:#95a5a6; text-decoration:none; font-size:14px;">Cancel</a>
+        </form>
+    </div>
+</body>
+</html>
