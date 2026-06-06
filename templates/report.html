@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SMA-AWS Report</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #eef2f3 0%, #d9e2e8 100%);
+            padding: 2rem;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            padding: 1.5rem 2rem;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .header h2 { margin: 0; font-weight: 600; }
+        .back-btn {
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(8px);
+            color: white;
+            text-decoration: none;
+            padding: 0.5rem 1.2rem;
+            border-radius: 40px;
+            font-weight: 500;
+            transition: 0.2s;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .back-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+        .form-section {
+            padding: 2rem;
+            background: #fafbfc;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .form-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .form-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        label {
+            font-weight: 600;
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #1e293b;
+            font-size: 0.9rem;
+        }
+        select, input, button {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            border-radius: 14px;
+            border: 1px solid #cbd5e1;
+            background: white;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+        }
+        select[multiple] { height: 140px; }
+        button.btn {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 0.5rem;
+            width: auto;
+            min-width: 180px;
+            padding: 0.7rem 1.5rem;
+            border-radius: 40px;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+        button.btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -5px rgba(37,99,235,0.4);
+        }
+        .results-section {
+            padding: 2rem;
+            background: white;
+        }
+        .results-section h3 {
+            margin-bottom: 1rem;
+            color: #0f172a;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .badge {
+            background: #e2e8f0;
+            padding: 0.2rem 0.6rem;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            font-weight: normal;
+        }
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            font-size: 0.85rem;
+        }
+        th {
+            background: #f8fafc;
+            padding: 1rem 0.75rem;
+            text-align: left;
+            font-weight: 600;
+            color: #1e293b;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #f1f5f9;
+            color: #334155;
+        }
+        tr:hover td { background-color: #fefce8; }
+        .no-data {
+            text-align: center;
+            padding: 2rem;
+            color: #64748b;
+            font-style: italic;
+        }
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            .form-row { flex-direction: column; gap: 1rem; }
+            .header { flex-direction: column; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h2>📊 Weather Data Report</h2>
+        <a href="/" class="back-btn">← Back to Dashboard</a>
+    </div>
+
+    <div class="form-section">
+        <form method="post">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>🏭 Stations (Ctrl+click to select multiple)</label>
+                    <select name="stations" multiple required size="5">
+                        {% for station in stations %}
+                        <option value="{{ station.station_id }}"{% if station.station_id in selected_stations %} selected{% endif %}>
+                            {{ station.name }} ({{ station.station_id }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>📅 Start Date & Time</label>
+                    <input type="datetime-local" name="start_time" value="{{ start_time }}" required>
+                </div>
+                <div class="form-group">
+                    <label>📅 End Date & Time</label>
+                    <input type="datetime-local" name="end_time" value="{{ end_time }}" required>
+                </div>
+                <div class="form-group">
+                    <label>🌡️ Weather Elements (select at least one)</label>
+                    <select name="elements" multiple required size="8">
+                        {% for key, name in elements.items() %}
+                        <option value="{{ key }}"{% if key in selected_elements %} selected{% endif %}>{{ name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <button type="submit" class="btn">🔍 Generate Report</button>
+            </div>
+        </form>
+    </div>
+
+    {% if rows %}
+    <div class="results-section">
+        <h3>📋 Results <span class="badge">{{ rows|length }} records</span></h3>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Station</th>
+                        <th>Observed At</th>
+                        {% for elem in visible_elements %}
+                        <th>{{ elements[elem] }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        <td>{{ row.station_name }}</td>
+                        <td>{{ row.observed_at[:19] }}</td>
+                        {% for elem in visible_elements %}
+                        <td>{{ row[elem] if row[elem] is not none else '-' }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+</body>
+</html>

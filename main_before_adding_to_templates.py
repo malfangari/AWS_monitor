@@ -2,10 +2,9 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
-from datetime import timedelta
 import json
 import os
-import sqlite3
+
 from parser import PARSER_MAP, get_friendly_name
 from database import (
     init_database,
@@ -19,12 +18,11 @@ from database import (
     save_weather_data,
     log_ingestion,
     get_station_status_for_dashboard,
-    save_to_csv, # keep existing CSV function
-    get_db_connection 
+    save_to_csv  # keep existing CSV function
 )
 
 app = FastAPI()
-templates_env = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="templates")
 
 def is_ajax_request(request: Request) -> bool:
     return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
@@ -63,11 +61,11 @@ def calculate_time_drift(reported_timestamp):
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    return templates_env.TemplateResponse(request=request, name="index.html", context={})
+    return templates.TemplateResponse(request=request, name="index.html", context={})
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request, error: str = None):
-    return templates_env.TemplateResponse(request=request, name="admin.html", context={"error": error})
+    return templates.TemplateResponse(request=request, name="admin.html", context={"error": error})
 
 @app.post("/admin/register")
 async def register_station(
@@ -147,38 +145,24 @@ async def get_monitor_data():
             labels[key] = get_friendly_name(key)
         station['labels'] = labels
     return status_data
-from jinja2 import Environment, FileSystemLoader
-from fastapi.responses import HTMLResponse
-
 @app.get("/report")
 async def report_form(request: Request):
-    # Compute default date range: last 30 days
-    now = datetime.now()
-    default_end = now.strftime("%Y-%m-%dT%H:%M")
-    default_start = (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M")
-
-    # Create a fresh Jinja2 environment for this request only
-    jinja_env = Environment(loader=FileSystemLoader("templates"))
-    template = jinja_env.get_template("report.html")
-    
+    # Get all stations for the form
     stations = get_all_stations()
+    # Get friendly names for common weather elements (you can use FRIENDLY_NAMES from parser)
     from parser import FRIENDLY_NAMES
-    elements = {k: v for k, v in FRIENDLY_NAMES.items() if k not in ['S','D','T']}
-    
-    html_content = template.render(
-        request=request,
-        stations=stations,
-        elements=elements,
-        selected_stations=[],
-        selected_elements=[],
-        start_time=default_start,
-        end_time=default_end,
-        rows=None
-    )
-    return HTMLResponse(content=html_content)
-
-from fastapi.responses import HTMLResponse
-from jinja2 import Environment, FileSystemLoader
+    # Only include tags that start with typical weather parameters (or show all)
+    elements = {k: v for k, v in FRIENDLY_NAMES.items() if not k in ['S','D','T']}
+    return templates.TemplateResponse("report.html", {
+        "request": request,
+        "stations": stations,
+        "elements": elements,
+        "selected_stations": [],
+        "selected_elements": [],
+        "start_time": "",
+        "end_time": "",
+        "rows": None
+    })
 
 @app.post("/report")
 async def generate_report(
@@ -188,12 +172,15 @@ async def generate_report(
     end_time: str = Form(...),
     elements: list[str] = Form(...)
 ):
+    # Convert form inputs
     stations_list = stations
-    start_dt = datetime.fromisoformat(start_time)
-    end_dt = datetime.fromisoformat(end_time)
+    start_dt = dt.fromisoformat(start_time)
+    end_dt = dt.fromisoformat(end_time)
     selected_elements = elements
 
     # Build SQL query
+    # We need to extract each selected element from the JSON all_parameters column
+    # Use json_extract for each element
     select_clauses = ["station_id", "observed_at"]
     for elem in selected_elements:
         select_clauses.append(f"json_extract(all_parameters, '$.{elem}') as {elem}")
@@ -215,37 +202,25 @@ async def generate_report(
         cursor.execute(query, params)
         rows = [dict(row) for row in cursor.fetchall()]
 
-    # Add station names
+    # Add station names for display
     station_names = {s['station_id']: s['name'] for s in get_all_stations()}
     for row in rows:
         row['station_name'] = station_names.get(row['station_id'], row['station_id'])
 
-    # Determine which elements actually have any non‑null data in the result set
-    visible_elements = []
-    for elem in selected_elements:
-        if any(row.get(elem) is not None for row in rows):
-            visible_elements.append(elem)
-
+    # Prepare form again
     stations_all = get_all_stations()
     from parser import FRIENDLY_NAMES
-    elements_all = {k: v for k, v in FRIENDLY_NAMES.items() if k not in ['S', 'D', 'T']}
-
-    # Create a fresh Jinja2 environment for rendering
-    env = Environment(loader=FileSystemLoader("templates"))
-    template = env.get_template("report.html")
-    html_content = template.render(
-        request=request,
-        stations=stations_all,
-        elements=elements_all,
-        selected_stations=stations_list,
-        selected_elements=selected_elements,
-        visible_elements=visible_elements,   # ← new variable
-        start_time=start_time,
-        end_time=end_time,
-        rows=rows
-    )
-    return HTMLResponse(content=html_content)
-
+    elements_all = {k: v for k, v in FRIENDLY_NAMES.items() if not k in ['S','D','T']}
+    return templates.TemplateResponse("report.html", {
+        "request": request,
+        "stations": stations_all,
+        "elements": elements_all,
+        "selected_stations": stations_list,
+        "selected_elements": selected_elements,
+        "start_time": start_time,
+        "end_time": end_time,
+        "rows": rows
+    })
 @app.post("/ingest/{port}")
 async def ingest(port: int, request: Request):
     raw_payload = await request.body()

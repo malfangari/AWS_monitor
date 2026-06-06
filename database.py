@@ -48,6 +48,11 @@ def init_database():
                 status TEXT DEFAULT 'offline'
             )
         ''')
+        # Add updated_at column if missing (for existing databases)
+        cursor.execute("PRAGMA table_info(stations)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'updated_at' not in columns:
+            cursor.execute("ALTER TABLE stations ADD COLUMN updated_at TEXT")
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS weather_data (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

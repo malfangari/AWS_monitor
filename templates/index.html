@@ -21,11 +21,15 @@
             padding: 12px; 
             width: auto; 
             box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
-            border-top: 5px solid #3498db; 
+            border-top: 5px solid #37dd31; 
             transition: transform 0.2s ease, box-shadow 0.2s ease;
             cursor: pointer;
             position: relative;
             height: fit-content;
+        }
+        .card.warning {
+            border-top: 5px solid #f0c818;  /* yellow */
+            background: #fff8e1;            /* optional light yellow background */
         }
         .card .card-actions {
     margin-top: auto;
@@ -42,14 +46,15 @@
             box-shadow: 0 4px 8px rgba(0,0,0,0.15);
         }
         .offline { border-top: 5px solid #e74c3c; background: #fdf2f2; }
+        .online { border-top: 5px solid #5ff04c; background: #fdf2f2; }
     
         /* 3. Typography for Cards */
         h1 { font-size: 1.1em; margin: 0; color: #2c3e50; }
         small { font-size: 0.75em; color: #7f8c8d; }
         .status-badge { font-size: 0.75em; padding: 2px 6px; border-radius: 4px; float: right; font-weight: bold; }
         .bg-online { background: #15e06a; color: white; }
-        .bg-offline { background: #ee0b0b; color: white; }
-    
+        .bg-offline { background: #eb2c2c; color: white; }
+        .bg-warning { background: #ecc619; color: rgb(49, 52, 214); }
         /* 4. Modal Overlay (Darkens the screen) */
         .modal {
     display: none;
@@ -181,8 +186,8 @@
     border-radius: 4px;
     cursor: pointer;
 }
-.view-btn { background: #55b3f1; color: white; }
-.delete-btn { background: #f85c4b; color: white; }
+.view-btn { background: #42abf1; color: white; }
+.delete-btn { background: #f13520; color: white; }
 .success-banner {
     position: fixed;
     top: 80px; /* below error banner if both appear */
@@ -281,7 +286,7 @@ let timeDisplay = (station.last_received === 'Never') ? 'Never' : station.last_r
 let timeAgo = 'Never';
 if (diffSeconds !== null) {
     timeAgo = `${diffSeconds}s ago`;
-    // 1. Offline Check (No signal for >30 seconds for testing, change back to 300 later)
+    // 1. Offline Check (No signal for >300 seconds )
     if (diffSeconds > 300) {
         statusClass = 'offline';
         badgeText = 'OFFLINE';
@@ -307,8 +312,8 @@ finalHtml += `
         <h1>${station.name || id}</h1>
         <small>${station.last_received} (${timeAgo})</small>
         <div style="margin-top: 10px;">
-            <button class="edit-btn" onclick="event.stopPropagation(); openEditModal('${id}')">✏️ Edit</button>
-            <button class="delete-btn" onclick="event.stopPropagation(); deleteStation('${id}')">🗑️ Delete</button>
+            <button class="edit-btn" onclick="event.stopPropagation(); openEditModal('${id}')">✏️</button>
+            <button class="delete-btn" onclick="event.stopPropagation(); deleteStation('${id}')">🗑️</button>
         </div>
     </div>`;
 }  
@@ -416,7 +421,7 @@ async function saveEdit() {
             if (response.ok) {
              closeAddEditModal();
              updateData();
-             showSuccess('Station added successfully');
+             showSuccess('Station updated successfully');
             }
         } else {
             const error = await response.json();
@@ -489,7 +494,9 @@ window.onload = function() {
     <div id="dashboard" class="dashboard-container"></div>
     <div style="display: flex; gap: 10px;">
         <a href="/admin" style="background: #3498db; color: white; text-decoration: none; padding: 10px 20px;
-         border-radius: 6px; font-weight: bold; display: inline-block;">⚙️ Stations Admin</a>
+         border-radius: 6px; font-weight: bold; display: inline-block;">⚙️ Add Station</a>
+         <a href="/report" style="background: #2ecc71; color: white; text-decoration: none; padding: 10px 20px;
+          border-radius: 6px; font-weight: bold;">📊 Report</a>
     <div id="stationModal" class="modal">
         <div class="modal-content">
             <div id="modalBody">
