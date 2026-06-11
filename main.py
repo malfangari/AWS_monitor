@@ -1,12 +1,14 @@
-from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI, Request, Form, HTTPException # type: ignore
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse # type: ignore
+from fastapi.templating import Jinja2Templates # type: ignore
 from datetime import datetime
 from datetime import timedelta
 import json
 import os
 import sqlite3
 from parser import PARSER_MAP, get_friendly_name
+from parser import FRIENDLY_NAMES
+
 from database import (
     init_database,
     get_all_stations,
@@ -65,10 +67,27 @@ def calculate_time_drift(reported_timestamp):
 async def dashboard(request: Request):
     return templates_env.TemplateResponse(request=request, name="index.html", context={})
 
+"""@app.get("/", response_class=HTMLResponse)
+async def admin_page(request: Request, error: str = None):
+    return templates_env.TemplateResponse(request=request, name="admin.html", context={"error": error})"""
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request, error: str = None):
-    return templates_env.TemplateResponse(request=request, name="admin.html", context={"error": error})
-
+    parsers = [name for name, func in PARSER_MAP.items() if func is not None]
+    return templates_env.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={"error": error, "parsers": parsers}
+    )
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request, error: str = None):
+    # Get all implemented parsers from PARSER_MAP
+    parsers = [name for name, func in PARSER_MAP.items() if func is not None]
+    return templates_env.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={"error": error, "parsers": parsers}
+    )
 @app.post("/admin/register")
 async def register_station(
     request: Request,
@@ -148,7 +167,7 @@ async def get_monitor_data():
         station['labels'] = labels
     return status_data
 from jinja2 import Environment, FileSystemLoader
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse # type: ignore
 
 @app.get("/report")
 async def report_form(request: Request):
@@ -162,7 +181,6 @@ async def report_form(request: Request):
     template = jinja_env.get_template("report.html")
     
     stations = get_all_stations()
-    from parser import FRIENDLY_NAMES
     elements = {k: v for k, v in FRIENDLY_NAMES.items() if k not in ['S','D','T']}
     
     html_content = template.render(
@@ -177,7 +195,7 @@ async def report_form(request: Request):
     )
     return HTMLResponse(content=html_content)
 
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse # type: ignore
 from jinja2 import Environment, FileSystemLoader
 
 @app.post("/report")

@@ -66,20 +66,39 @@
     backdrop-filter: blur(4px);
 }
 .modal-content {
-    background: white;
-    margin: 10% auto;
+    background-color: #fff;
+    margin: 5% auto;
     padding: 0;
-    border-radius: 12px;
-    width: 90%;
-    max-width: 500px;
+    border-radius: 15px;
+    width: 90%;                /* wider than before (was 70%) */
+    max-width: 1400px;         /* limit on very large screens */
+    max-height: 85vh;          /* slightly taller */
+    overflow-y: auto;
     box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    position: relative;
+}
+.modal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); /* responsive columns */
+    gap: 16px;
+    padding: 20px 25px;
 }
 .modal-header {
+    position: sticky;
+    top: 0;
+    background-color: #fff;
     padding: 20px 25px;
-    border-bottom: 1px solid #eee;
+    border-bottom: 2px solid #eee;
+    z-index: 10;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border-top-left-radius: 15px;
+    border-top-right-radius: 15px;
+}
+.item.missing-data {
+    background-color: #f8d7da;
+    border-left: 4px solid #e74c3c;
 }
 .modal-body {
     padding: 20px 25px;
@@ -156,13 +175,6 @@
     border-radius: 4px;
     cursor: pointer;
 }
-/* 3. Padding for the grid so it doesn't touch the edges */
-.modal-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 15px;
-    padding: 20px 25px; /* Added padding here since we removed it from modal-content */
-}
 
 /* 4. Adjust close button for the header flexbox */
 .close-btn {
@@ -173,10 +185,27 @@
     line-height: 1; /* Better alignment */
 }
         /* 7. Modal Data Items */
-        .item { font-size: 0.95em; padding: 8px; border-bottom: 1px solid #f5f5f5; display: flex; justify-content: space-between; }
-        .label { font-weight: bold; color: #7f8c8d; }
-        .value { color: #2980b9; font-weight: bold; }
-    
+        .item {
+    font-size: 0.95em;
+    padding: 8px;
+    border-bottom: 1px solid #f5f5f5;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;          /* allow wrapping if needed */
+    word-break: break-word;   /* break long words */
+}
+.item .label {
+    font-weight: bold;
+    color: #7f8c8d;
+    flex: 1;
+}
+.item .value {
+    color: #2980b9;
+    font-weight: bold;
+    flex: 2;
+    text-align: right;
+    margin-left: 10px;
+}    
         .close-btn:hover { color: #e74c3c; }
         .view-btn, .delete-btn {
     font-size: 0.7em;
@@ -364,29 +393,32 @@ finalHtml += `
     }
 }
 
-    function openModal(id) {
+function openModal(id) {
     const station = globalData[id];
     const modal = document.getElementById('stationModal');
     const body = document.getElementById('modalBody');
 
-    // Structure with a separate Header and Grid
     let html = `
         <div class="modal-header">
             <div>
                 <h2 style="margin:0; color:#2c3e50">Station: ${id}</h2>
                 <small style="color:#7f8c8d">Full Report - ${station.last_received}</small>
             </div>
-                <span class="close-btn" onclick="closeViewModal()">&times;</span>   
-                  </div>
+            <span class="close-btn" onclick="closeViewModal()">&times;</span>
+        </div>
         <div class="modal-grid">`;
 
     for (const [tag, val] of Object.entries(station.data)) {
         if (!['S', 'D', 'T'].includes(tag)) {
             let displayName = (station.labels && station.labels[tag]) ? station.labels[tag] : tag;
+            // Check for missing data: null, '/', or empty string
+            let isMissing = (val === null || val === '/' || val === '');
+            let missingClass = isMissing ? 'missing-data' : '';
+            let displayValue = (val !== null && val !== '/') ? val : '---';
             html += `
-                <div class="item">
-                    <span class="label">${displayName}:</span> 
-                    <span class="value">${val !== null ? val : '---'}</span>
+                <div class="item ${missingClass}">
+                    <span class="label">${displayName}:</span>
+                    <span class="value">${displayValue}</span>
                 </div>`;
         }
     }

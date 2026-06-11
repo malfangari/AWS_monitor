@@ -26,7 +26,9 @@
             
             <label style="font-size: 12px; color: #7f8c8d;">Select Parser Type:</label>
             <select name="parser_type">
-                <option value="Vaisala">Vaisala AWS330</option>
+                {% for parser in parsers %}
+                <option value="{{ parser }}">{{ parser }}</option>
+                {% endfor %}
             </select>
             
             <button type="submit">Add to System</button>
