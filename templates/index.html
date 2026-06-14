@@ -248,9 +248,177 @@
 .success-close:hover {
     opacity: 0.7;
 }
+.log-area {
+            background: #1e1e1e;
+                        color: #d4d4d4;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .log-line {
+            border-bottom: 1px solid #333;
+            padding: 4px 0;
+        }
+        .remote-link {
+            display: inline-block;
+            margin: 10px 0;
+            color: #3498db;
+            text-decoration: underline;
+                        cursor: pointer;
+        }
+        .terminal-console {
+            background: #0a0a0a;
+            color: #0f0;
+            font-family: monospace;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            display: none;
+        }
+        .terminal-output {
+            height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-bottom: 8px;
+        }
+        .terminal-input {
+            display: flex;
+            gap: 5px;
+        }
+                .terminal-input input {
+            flex: 1;
+            background: #222;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 5px;
+            font-family: monospace;
+        }
+        .terminal-input button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            cursor: pointer;
+        }
+        .monitor-controls {
+            margin-bottom: 10px;
+        }
+        .monitor-controls button {
+            margin-right: 10px;
+        }
     </style>
     <script>
+    let currentEditStationId = null;
+    let portMonitorInterval = null;
+    let currentMonitorStationId = null;
     let globalData = {}; // Store latest data for modal access
+
+    // New: Open Port Monitor modal
+    function openPortMonitor(stationId) {
+        const station = globalData[stationId];
+        const modal = document.getElementById('portMonitorModal');
+        const titleSpan = document.getElementById('portMonitorTitle');
+        titleSpan.innerText = `${station.name || stationId} (Port ${station.port})`;
+        currentMonitorStationId = stationId;
+        // Clear previous log
+        const logDiv = document.getElementById('rawLog');
+        logDiv.innerHTML = '';
+        
+        // Hide terminal console if open
+        document.getElementById('terminalConsole').style.display = 'none';
+        document.getElementById('remoteLink').style.display = 'inline-block';
+        
+        // Stop any previous polling
+        if (portMonitorInterval) clearInterval(portMonitorInterval);
+        
+        // Start polling raw data (mock for now, replace with real API)
+        startRawDataPolling(stationId);
+        
+        modal.style.display = 'block';
+    }
+    
+    function startRawDataPolling(stationId) {
+    if (portMonitorInterval) clearInterval(portMonitorInterval);
+    portMonitorInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/raw_data/${stationId}?limit=20`);
+            if (!response.ok) throw new Error('Network error');
+            const data = await response.json();
+            const logDiv = document.getElementById('rawLog');
+            // Keep existing logs? We'll rebuild from fetched messages (latest first)
+            logDiv.innerHTML = '';
+            // Reverse to show chronological order (oldest at top, newest at bottom)
+            data.messages.reverse().forEach(msg => {
+                const time = msg.received_at.slice(11, 19);
+                addRawLogLine(`${time} > ${msg.raw_text}`);
+            });
+        } catch (err) {
+            console.error("Failed to fetch raw data", err);
+        }
+        }, 2000);
+    }    
+    
+    function addRawLogLine(line) {
+        const logDiv = document.getElementById('rawLog');
+        const lineDiv = document.createElement('div');
+        lineDiv.className = 'log-line';
+        lineDiv.innerText = new Date().toLocaleTimeString() + ' > ' + line;
+        logDiv.appendChild(lineDiv);
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+    
+    function stopRawDataPolling() {
+        if (portMonitorInterval) {
+            clearInterval(portMonitorInterval);
+            portMonitorInterval = null;
+        }
+    }
+    
+    function closePortMonitor() {
+        stopRawDataPolling();
+        document.getElementById('portMonitorModal').style.display = 'none';
+        // Also close terminal if open
+        document.getElementById('terminalConsole').style.display = 'none';
+    }
+    
+    function toggleRemoteAccess() {
+        const terminalDiv = document.getElementById('terminalConsole');
+        if (terminalDiv.style.display === 'none' || terminalDiv.style.display === '') {
+            terminalDiv.style.display = 'block';
+            // For design, we simulate connecting to station's remote terminal
+            // In real implementation, open WebSocket to /terminal/{stationId}
+            addTerminalOutput('Connecting to station remote terminal...\n');
+            setTimeout(() => {
+                addTerminalOutput('Connected. Ready for commands.\n');
+            }, 1000);
+        } else {
+            terminalDiv.style.display = 'none';
+        }
+    }
+    
+    function addTerminalOutput(text) {
+        const outputDiv = document.getElementById('terminalOutput');
+        outputDiv.innerText += text;
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+    }
+    
+    function sendTerminalCommand() {
+        const input = document.getElementById('terminalCommand');
+        const cmd = input.value;
+        if (!cmd.trim()) return;
+        addTerminalOutput(`> ${cmd}\n`);
+        // Simulate response (replace with actual WebSocket send)
+        setTimeout(() => {
+            addTerminalOutput(`Command "${cmd}" executed (simulated).\n`);
+        }, 500);
+        input.value = '';
+        }
+       
     async function deleteStation(stationId) {
     if (!confirm(`Are you sure you want to delete station "${stationId}"? This will remove it from the monitor. Data logs will remain.`)) {
         return;
@@ -272,7 +440,7 @@
         alert('Delete failed');
     }
 }
-let currentEditStationId = null;
+
 
 async function openEditModal(stationId) {
     currentEditStationId = stationId;
@@ -341,9 +509,10 @@ finalHtml += `
         <h1>${station.name || id}</h1>
         <small>${station.last_received} (${timeAgo})</small>
         <div style="margin-top: 10px;">
-            <button class="edit-btn" onclick="event.stopPropagation(); openEditModal('${id}')">✏️</button>
-            <button class="delete-btn" onclick="event.stopPropagation(); deleteStation('${id}')">🗑️</button>
-        </div>
+          <button class="edit-btn" onclick="event.stopPropagation(); openEditModal('${id}')">✏️</button>
+          <button class="delete-btn" onclick="event.stopPropagation(); deleteStation('${id}')">🗑️</button>
+          <button class="port-monitor-btn" onclick="event.stopPropagation(); openPortMonitor('${id}')">🔌 Port Monitor</button>
+         </div>
     </div>`;
 }  
         container.innerHTML = finalHtml;
@@ -569,6 +738,38 @@ window.onload = function() {
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeAddEditModal()">Cancel</button>
             <button class="btn-primary" id="saveBtn">Save Station</button>
+        </div>
+    </div>
+</div>
+<!-- New Port Monitor Modal -->
+<div id="portMonitorModal" class="modal">
+    <div class="modal-content" style="max-width: 1000px;">
+        <div class="modal-header">
+            <div>
+                <h2 style="margin:0;">Port Monitor: <span id="portMonitorTitle"></span></h2>
+                <small style="color:#7f8c8d">Live raw data stream from the station's port</small>
+            </div>
+            <span class="close-btn" onclick="closePortMonitor()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="monitor-controls">
+                <button onclick="startRawDataPolling(currentMonitorStationId)">Start Stream</button>
+                <button onclick="stopRawDataPolling()">Stop Stream</button>
+                <button onclick="document.getElementById('rawLog').innerHTML = ''">Clear Log</button>
+            </div>
+            <div id="rawLog" class="log-area">
+                <!-- Raw data lines will appear here -->
+            </div>
+            <div>
+            <a id="remoteLink" class="remote-link" onclick="toggleRemoteAccess()">🔌 Remote Access (activate console)</a>
+            </div>
+            <div id="terminalConsole" class="terminal-console">
+                <div id="terminalOutput" class="terminal-output">Remote terminal ready. Type commands below.\n</div>
+                <div class="terminal-input">
+                    <input type="text" id="terminalCommand" placeholder="Enter command..." onkeypress="if(event.key==='Enter') sendTerminalCommand();">
+                    <button onclick="sendTerminalCommand()">Send</button>
+                </div>
+            </div>
         </div>
     </div>
 </div>

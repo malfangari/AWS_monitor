@@ -64,7 +64,12 @@ def init_database():
                 FOREIGN KEY (station_id) REFERENCES stations(station_id)
             )
         ''')
-        cursor.execute('''
+        # Add 'locked' column if missing
+        cursor.execute("PRAGMA table_info(stations)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'locked' not in columns:
+            cursor.execute("ALTER TABLE stations ADD COLUMN locked INTEGER DEFAULT 0")
+            cursor.execute('''
             CREATE TABLE IF NOT EXISTS ingestion_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 station_id TEXT NOT NULL,
@@ -76,13 +81,25 @@ def init_database():
                 drift_seconds REAL
             )
         ''')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_weather_station ON weather_data(station_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_weather_observed ON weather_data(observed_at)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_log_station ON ingestion_log(station_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_log_received ON ingestion_log(received_at)')
-        conn.commit()
-    print("✅ SQLite database initialized")
-
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS raw_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        station_id TEXT NOT NULL,
+        received_at TEXT NOT NULL,
+        raw_text TEXT NOT NULL,
+        FOREIGN KEY (station_id) REFERENCES stations(station_id)
+            )
+        ''')
+    
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_raw_station ON raw_messages(station_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_raw_received ON raw_messages(received_at)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_weather_station ON weather_data(station_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_weather_observed ON weather_data(observed_at)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_log_station ON ingestion_log(station_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_log_received ON ingestion_log(received_at)')
+    conn.commit()
+print("✅ SQLite database initialized")
+    
 # --- Station CRUD ---
 def get_all_stations():
     with get_db_connection() as conn:
@@ -240,3 +257,42 @@ def migrate_stations_from_json():
             )
             print(f"Migrated station {sid}")
     print("Migration from stations.json complete")
+
+# ---------- Raw messages for Port Monitor ----------
+def save_raw_message(station_id, raw_text):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO raw_messages (station_id, received_at, raw_text)
+            VALUES (?, ?, ?)
+        ''', (station_id, datetime.now().isoformat(), raw_text))
+        conn.commit()
+
+def get_recent_raw_messages(station_id, limit=50):
+    with get_db_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT received_at, raw_text FROM raw_messages
+            WHERE station_id = ?
+            ORDER BY received_at DESC LIMIT ?
+        ''', (station_id, limit))
+        return [dict(row) for row in cursor.fetchall()]
+
+def set_station_lock(station_id, locked=True):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        # Ensure the 'locked' column exists (create if missing)
+        cursor.execute("PRAGMA table_info(stations)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'locked' not in columns:
+            cursor.execute("ALTER TABLE stations ADD COLUMN locked INTEGER DEFAULT 0")
+        cursor.execute("UPDATE stations SET locked = ? WHERE station_id = ?", (1 if locked else 0, station_id))
+        conn.commit()
+
+def is_station_locked(station_id):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT locked FROM stations WHERE station_id = ?", (station_id,))
+        row = cursor.fetchone()
+        return row and row[0] == 1

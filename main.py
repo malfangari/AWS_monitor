@@ -21,6 +21,10 @@ from database import (
     save_weather_data,
     log_ingestion,
     get_station_status_for_dashboard,
+    save_raw_message,
+    get_recent_raw_messages,
+    set_station_lock,
+    is_station_locked,
     save_to_csv, # keep existing CSV function
     get_db_connection 
 )
@@ -274,9 +278,16 @@ async def ingest(port: int, request: Request):
     if not station:
         save_raw_quarantine("unknown", raw_msg, f"Port {port} not registered")
         return {"error": f"Port {port} not registered"}
-
     station_id = station['station_id']
     parser_name = station['parser_type']
+
+    # Save raw message for later retrieval (Port Monitor)
+    save_raw_message(station_id, raw_msg)
+    
+    #check if station is locked (remote access active)
+    if is_station_locked(station_id):
+         return {"status": "locked", "message": "Remote access active, data not processed"}
+    
     print(f"DEBUG: Using parser '{parser_name}' for station {station_id}")
     if parser_name not in PARSER_MAP or PARSER_MAP[parser_name] is None:
         save_raw_quarantine(station_id, raw_msg, f"Parser '{parser_name}' not implemented")
@@ -322,12 +333,13 @@ async def ingest(port: int, request: Request):
             drift_seconds=drift
         )
 
-        if message_station_id != station_id:
+        """if message_station_id != station_id:
             reason = f"Station ID mismatch: message says '{message_station_id}', port {port} registered for '{station_id}'"
             print(f"❌ {reason}")
             log_ingestion(station_id, "FAILED", reason, QUARANTINE_ROOT, raw_preview, None)
             save_raw_quarantine(station_id, raw_msg, reason)
-            return JSONResponse(status_code=400, content={"error": reason})
+            return JSONResponse(status_code=400, content={"error": reason})""" 
+        
         print(f"🔍 VERIFY: Registered station on port {port} = '{station_id}'")
         print(f"🔍 VERIFY: Parsed station ID from message = '{message_station_id}'")
         print(f"🔍 VERIFY: Match? {message_station_id == station_id}")
@@ -365,6 +377,13 @@ async def ingest(port: int, request: Request):
     except Exception as e:
         save_raw_quarantine(station_id, raw_msg, f"Unexpected error: {str(e)}")
         return {"error": f"Processing error: {str(e)}"}
+@app.get("/api/raw_data/{station_id}")
+async def get_raw_data(station_id: str, limit: int = 50):
+    station = get_station_by_id(station_id)
+    if not station:
+        raise HTTPException(status_code=404, detail="Station not found")
+    messages = get_recent_raw_messages(station_id, limit)
+    return {"station_id": station_id, "messages": messages}
 
 # ---------- Initialize database on startup ----------
 init_database()
