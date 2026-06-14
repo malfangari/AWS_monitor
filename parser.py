@@ -38,7 +38,7 @@ def parse_vaisala_aws330(raw_msg: str):
                 raw_time = str(val)
             else:
                 parsed_parameters[tag] = final_val
-
+    print(f"DEBUG: Stored keys for {station_id}: {list(parsed_parameters.keys())}")
     if raw_date and raw_time:
         try:
             dt_obj = datetime.strptime(f"{raw_date}{raw_time}", "%y%m%d%H%M%S")
@@ -59,7 +59,7 @@ def parse_vaisala_aws330(raw_msg: str):
 def parse_vaisala_smsaws(raw_msg: str):
     """
     Decodes a Vaisala SMSAWS message (the pipe‑separated format used by AWS810 etc.)
-    Returns a dictionary with the same CSV tag keys as the original parser.
+    Returns a dictionary with the same CSV tag keys as the (csv normal format) parser.
     """
     # Remove control characters and newlines
     clean_msg = raw_msg.replace('\n', '').replace('\r', '').replace('<SOH>', '').replace('<STX>', '').replace('<ETX>', '').strip()
@@ -111,8 +111,10 @@ def parse_vaisala_smsaws(raw_msg: str):
         base_tag = parts_left[0]        # e.g., TA, RH, WS, WD, QFE, etc.
         statistic = parts_left[1] if len(parts_left) > 1 else None   # AVG, MIN, MAX, SUM, VALUE
         period = parts_left[2] if len(parts_left) > 2 else None       # PT1M, PT1H, PT24H, etc.
-        sensor = parts_left[3] if len(parts_left) > 3 else None       # '1' or '2' for secondary sensor (optional)
-        
+        sensor = None 
+        for part in parts_left:
+          if part in ('1', '2'):
+             sensor = part        
         # Determine the CSV tag based on the mapping rules
         csv_tag = None
         
@@ -298,7 +300,8 @@ def parse_vaisala_smsaws(raw_msg: str):
             obs_timestamp = dt_obj.isoformat()
         except ValueError:
             pass
-
+    print(f"DEBUG: Stored keys for station {station_id}: {list(parsed_parameters.keys())}")
+    print("DEBUG parsed_parameters keys:", list(parsed_parameters.keys()))
     return {
         "station_id": station_id,
         "timestamp": obs_timestamp,

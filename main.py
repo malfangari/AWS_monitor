@@ -65,20 +65,16 @@ def calculate_time_drift(reported_timestamp):
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    return templates_env.TemplateResponse(request=request, name="index.html", context={})
-
+    parsers = [name for name, func in PARSER_MAP.items() if func is not None]
+    return templates_env.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"parsers": parsers}
+    )
 """@app.get("/", response_class=HTMLResponse)
 async def admin_page(request: Request, error: str = None):
     return templates_env.TemplateResponse(request=request, name="admin.html", context={"error": error})"""
 
-@app.get("/admin", response_class=HTMLResponse)
-async def admin_page(request: Request, error: str = None):
-    parsers = [name for name, func in PARSER_MAP.items() if func is not None]
-    return templates_env.TemplateResponse(
-        request=request,
-        name="admin.html",
-        context={"error": error, "parsers": parsers}
-    )
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request, error: str = None):
     # Get all implemented parsers from PARSER_MAP
@@ -281,7 +277,7 @@ async def ingest(port: int, request: Request):
 
     station_id = station['station_id']
     parser_name = station['parser_type']
-
+    print(f"DEBUG: Using parser '{parser_name}' for station {station_id}")
     if parser_name not in PARSER_MAP or PARSER_MAP[parser_name] is None:
         save_raw_quarantine(station_id, raw_msg, f"Parser '{parser_name}' not implemented")
         return {"error": f"Parser '{parser_name}' not available"}
