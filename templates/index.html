@@ -317,7 +317,8 @@
     let portMonitorInterval = null;
     let currentMonitorStationId = null;
     let globalData = {}; // Store latest data for modal access
-
+    let ws = null;             
+    let remoteActive = false;    
     // New: Open Port Monitor modal
     function openPortMonitor(stationId) {
         const station = globalData[stationId];
@@ -386,21 +387,91 @@
         document.getElementById('terminalConsole').style.display = 'none';
     }
     
-    function toggleRemoteAccess() {
-        const terminalDiv = document.getElementById('terminalConsole');
-        if (terminalDiv.style.display === 'none' || terminalDiv.style.display === '') {
-            terminalDiv.style.display = 'block';
-            // For design, we simulate connecting to station's remote terminal
-            // In real implementation, open WebSocket to /terminal/{stationId}
-            addTerminalOutput('Connecting to station remote terminal...\n');
-            setTimeout(() => {
-                addTerminalOutput('Connected. Ready for commands.\n');
-            }, 1000);
-        } else {
-            terminalDiv.style.display = 'none';
-        }
+    async function toggleRemoteAccess() {
+    console.log('toggleRemoteAccess called');
+    console.log('currentMonitorStationId =', currentMonitorStationId);
+    const stationId = currentMonitorStationId;
+    if (!stationId) {
+        addTerminalOutput('ERROR: No station selected.\n');
+        return;
     }
-    
+
+    if (remoteActive) {
+        // Disconnect
+        try {
+            await fetch(`/terminal/disconnect/${stationId}`, { method: 'POST' }); // <-- problem: {station_id} literal, not template literal?
+        } catch (e) {
+            addTerminalOutput('ERROR: Failed to disconnect.\n');
+            return;
+        }
+        if (ws) {
+            ws.close();
+            ws = null;
+        }
+        document.getElementById('terminalConsole').style.display = 'none';
+        document.getElementById('remoteToggleBtn').innerText = '🔌 Connect Remote Terminal';
+        addTerminalOutput('Remote session terminated. Data flow resumed.\n');
+        remoteActive = false;
+        return;
+    }
+
+    // Connect: switch mode to terminal
+    try {
+        const response = await fetch(`/terminal/connect/${stationId}`, { method: 'POST' });
+        if (!response.ok) {
+            addTerminalOutput('ERROR: Could not activate remote mode.\n');
+            return;
+        }
+    } catch (e) {
+        addTerminalOutput('ERROR: Network error.\n');
+        return;
+    }
+
+    addTerminalOutput('Opening connection to station...\n');
+    addTerminalOutput('WARNING: Data flow will stop until you disconnect.\n');
+
+    // Open WebSocket
+    ws = new WebSocket(`ws://${window.location.host}/ws/terminal/${stationId}`);
+    ws.onopen = () => {
+        addTerminalOutput('Connected. Ready for commands.\n');
+        document.getElementById('remoteToggleBtn').innerText = '🔌 Disconnect Remote Terminal';
+        remoteActive = true;
+    };
+    ws.onmessage = (event) => {
+        addTerminalOutput(event.data);
+    };
+    ws.onerror = () => {
+        addTerminalOutput('WebSocket error.\n');
+    };
+    ws.onclose = () => {
+        addTerminalOutput('Connection closed.\n');
+        if (remoteActive) {
+            // Auto-disconnect if WebSocket closes unexpectedly
+            fetch(`/terminal/disconnect/${stationId}`, { method: 'POST' }).catch(() => {});
+            document.getElementById('remoteToggleBtn').innerText = '🔌 Connect Remote Terminal';
+            remoteActive = false;
+        }
+        ws = null;
+    };
+    document.getElementById('terminalConsole').style.display = 'block';
+} 
+
+async function resetPorts() {
+    if (!confirm("Are you sure you want to reset ALL stations to data mode? This will stop any active remote terminal sessions and resume data flow.")) {
+        return;
+    }
+    try {
+        const response = await fetch('/admin/reset_modes', { method: 'POST' });
+        if (response.ok) {
+            showSuccess('All stations reset to data mode.');
+            await updateData();  // refresh dashboard
+        } else {
+            showError('Failed to reset modes.');
+        }
+    } catch (err) {
+        showError('Network error.');
+    }
+}
     function addTerminalOutput(text) {
         const outputDiv = document.getElementById('terminalOutput');
         outputDiv.innerText += text;
@@ -698,6 +769,8 @@ window.onload = function() {
          border-radius: 6px; font-weight: bold; display: inline-block;">⚙️ Add Station</a>
          <a href="/report" style="background: #2ecc71; color: white; text-decoration: none; padding: 10px 20px;
           border-radius: 6px; font-weight: bold;">📊 Report</a>
+        <button onclick="resetPorts()" style="background: #e67e22; color: white; text-decoration: none; 
+        padding: 10px 20px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer;">🔄 Port Reset</button>
     <div id="stationModal" class="modal">
         <div class="modal-content">
             <div id="modalBody">
@@ -762,6 +835,7 @@ window.onload = function() {
             </div>
             <div>
             <a id="remoteLink" class="remote-link" onclick="toggleRemoteAccess()">🔌 Remote Access (activate console)</a>
+            <button id="remoteToggleBtn" class="remote-link" onclick="toggleRemoteAccess()">🔌 Connect Remote Terminal</button>
             </div>
             <div id="terminalConsole" class="terminal-console">
                 <div id="terminalOutput" class="terminal-output">Remote terminal ready. Type commands below.\n</div>

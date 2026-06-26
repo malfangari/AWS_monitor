@@ -8,29 +8,156 @@ import os
 import sqlite3
 from parser import PARSER_MAP, get_friendly_name
 from parser import FRIENDLY_NAMES
-
+import asyncio
+from fastapi import FastAPI, Request, Form, HTTPException, WebSocket, WebSocketDisconnect
 from database import (
-    init_database,
-    get_all_stations,
-    get_station_by_port,
-    get_station_by_id,
-    register_station_db,
-    update_station_db,
-    delete_station_db,
-    update_station_last_seen,
-    save_weather_data,
-    log_ingestion,
-    get_station_status_for_dashboard,
-    save_raw_message,
-    get_recent_raw_messages,
-    set_station_lock,
-    is_station_locked,
+    set_station_mode, get_station_mode, get_all_stations_with_mode,
+    init_database,get_all_stations, get_station_by_port, get_station_by_id,
+    register_station_db,update_station_db, delete_station_db, update_station_last_seen,
+    save_weather_data, log_ingestion, get_station_status_for_dashboard, save_raw_message,
+    get_recent_raw_messages, set_station_lock, is_station_locked,
     save_to_csv, # keep existing CSV function
     get_db_connection 
 )
 
 app = FastAPI()
 templates_env = Jinja2Templates(directory="templates")
+
+terminal_servers = {}  # port -> asyncio.Server
+terminal_sessions = {} # station_id -> {'reader', 'writer', 'ws'}
+
+async def handle_terminal_client(reader, writer, port, station_id):
+    print(f"🔌 Terminal connection from {station_id} on port {port}")
+    session = {'reader': reader, 'writer': writer, 'ws': None}
+    terminal_sessions[station_id] = session
+
+    # Set station lock (bridge stops forwarding)
+    set_station_lock(station_id, True)
+
+    try:
+        # Wait for WebSocket to attach (up to 10s)
+        for _ in range(10):
+            if session['ws'] is not None:
+                break
+            await asyncio.sleep(1)
+        if session['ws'] is None:
+            print(f"⚠️ No WebSocket for {station_id}, closing terminal")
+            return
+
+        ws = session['ws']
+        # Bidirectional forwarding
+        tcp_to_ws = asyncio.create_task(forward_tcp_to_ws(reader, ws))
+        ws_to_tcp = asyncio.create_task(forward_ws_to_tcp(ws, writer))
+        await asyncio.gather(tcp_to_ws, ws_to_tcp)
+    except Exception as e:
+        print(f"⚠️ Terminal error {station_id}: {e}")
+    finally:
+        writer.close()
+        await writer.wait_closed()
+        terminal_sessions.pop(station_id, None)
+        set_station_lock(station_id, False)
+        print(f"🔌 Terminal disconnected: {station_id}")
+
+async def forward_tcp_to_ws(reader, ws):
+    try:
+        while True:
+            data = await reader.read(1024)
+            if not data:
+                break
+            await ws.send_text(data.decode())
+    except:
+        pass
+
+async def forward_ws_to_tcp(ws, writer):
+    try:
+        while True:
+            msg = await ws.receive_text()
+            writer.write(msg.encode())
+            await writer.drain()
+    except:
+        pass
+
+@app.post("/terminal/connect/{station_id}")
+async def terminal_connect(station_id: str):
+    station = get_station_by_id(station_id)
+    if not station:
+        raise HTTPException(404, "Station not found")
+    # Switch mode to terminal
+    set_station_mode(station_id, 'terminal')
+    # Bridge will release the port; main will start terminal server automatically
+    return {"status": "terminal mode activated"}
+
+@app.post("/terminal/disconnect/{station_id}")
+async def terminal_disconnect(station_id: str):
+    station = get_station_by_id(station_id)
+    if not station:
+        raise HTTPException(404, "Station not found")
+    # Switch mode back to data
+    set_station_mode(station_id, 'data')
+    # Main will stop terminal server; bridge will restart data listener
+    return {"status": "data mode restored"}
+#=============================================  from  here to #========== The difference between these two sets
+# tells us which servers to stop (those no longer needed) and which to start (newly requested).
+async def manage_terminal_servers():
+    while True:
+        stations = get_all_stations_with_mode()
+        current_ports = set(terminal_servers.keys())
+        desired_ports = {s['port'] for s in stations if s['mode'] == 'terminal'}
+
+        # Stop servers for ports that are no longer in terminal mode
+        for port in current_ports - desired_ports:
+            if port in terminal_servers:
+                server = terminal_servers[port]
+                server.close()
+                await server.wait_closed()
+                del terminal_servers[port]
+                print(f"🛑 Terminal server stopped on port {port}")
+
+        # Start servers for new terminal ports
+        for port in desired_ports - current_ports:
+            station = next(s for s in stations if s['port'] == port)
+            try:
+                server = await asyncio.start_server(
+                    lambda r, w: handle_terminal_client(r, w, port, station['station_id']),
+                    '0.0.0.0', port
+                )
+                terminal_servers[port] = server
+                print(f"✅ Terminal server started on port {port} for {station['station_id']}")
+            except Exception as e:
+                print(f"❌ Failed to start terminal server on port {port}: {e}")
+
+        await asyncio.sleep(2)  # check every 2 seconds
+#=====================================================================        
+
+@app.on_event("startup")
+async def startup():
+    asyncio.create_task(manage_terminal_servers())
+@app.websocket("/ws/terminal/{station_id}")
+async def terminal_websocket(websocket: WebSocket, station_id: str):
+    await websocket.accept()
+    station = get_station_by_id(station_id)
+    if not station:
+        await websocket.send_text("ERROR: Station not found")
+        await websocket.close()
+        return
+
+    session = terminal_sessions.get(station_id)
+    if not session or not session.get('writer'):
+        await websocket.send_text("ERROR: Station not connected to terminal port")
+        await websocket.close()
+        return
+
+    session['ws'] = websocket
+    try:
+        while True:
+            await asyncio.sleep(1)
+            if not session.get('writer'):
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        session['ws'] = None
+        await websocket.close()
 
 def is_ajax_request(request: Request) -> bool:
     return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
@@ -166,6 +293,7 @@ async def get_monitor_data():
             labels[key] = get_friendly_name(key)
         station['labels'] = labels
     return status_data
+    
 from jinja2 import Environment, FileSystemLoader
 from fastapi.responses import HTMLResponse # type: ignore
 
@@ -377,6 +505,15 @@ async def ingest(port: int, request: Request):
     except Exception as e:
         save_raw_quarantine(station_id, raw_msg, f"Unexpected error: {str(e)}")
         return {"error": f"Processing error: {str(e)}"}
+    
+@app.post("/admin/reset_modes")
+async def reset_all_modes():
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE stations SET mode = 'data'")
+        conn.commit()
+    return {"status": "All stations reset to data mode"}
+
 @app.get("/api/raw_data/{station_id}")
 async def get_raw_data(station_id: str, limit: int = 50):
     station = get_station_by_id(station_id)

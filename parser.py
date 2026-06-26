@@ -462,6 +462,8 @@ FRIENDLY_NAMES.update({
     "RH1MIN1D": "Min Relative Humidity (Daily)",
     "TDAVG1M": "Dewpoint (1m Avg)",
     "RH1MAX1D": "Max Relative Humidity (Daily)",   # in case it appears later
+    "WD2AVG10M": "10-minute average wind direction sesnor-2",
+    "WS2AVG10M": "10-minute average wind speed sesnor-2",
 })
 def get_friendly_name(tag):
     return FRIENDLY_NAMES.get(tag, tag)

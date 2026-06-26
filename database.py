@@ -69,6 +69,10 @@ def init_database():
         columns = [col[1] for col in cursor.fetchall()]
         if 'locked' not in columns:
             cursor.execute("ALTER TABLE stations ADD COLUMN locked INTEGER DEFAULT 0")
+        cursor.execute("PRAGMA table_info(stations)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'mode' not in columns:
+            cursor.execute("ALTER TABLE stations ADD COLUMN mode TEXT DEFAULT 'data'")
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS ingestion_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -296,3 +300,23 @@ def is_station_locked(station_id):
         cursor.execute("SELECT locked FROM stations WHERE station_id = ?", (station_id,))
         row = cursor.fetchone()
         return row and row[0] == 1
+
+def set_station_mode(station_id, mode):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE stations SET mode = ? WHERE station_id = ?", (mode, station_id))
+        conn.commit()
+
+def get_station_mode(station_id):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT mode FROM stations WHERE station_id = ?", (station_id,))
+        row = cursor.fetchone()
+        return row[0] if row else 'data'
+
+def get_all_stations_with_mode():
+    with get_db_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT station_id, port, mode FROM stations")
+        return [dict(row) for row in cursor.fetchall()]
